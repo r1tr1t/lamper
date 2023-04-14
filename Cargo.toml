@@ -11,7 +11,6 @@ tokio = {version = "1", features = ["full"]}
 serde_json = {version = "1"}
 libpulse-binding = "2"
 libpulse-simple-binding = "2"
-colored = "2"
 dft = "0.5"
 arr_macro = "0.2.1"
 
