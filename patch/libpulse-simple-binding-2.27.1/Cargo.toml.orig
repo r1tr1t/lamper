@@ -1,0 +1,37 @@
+[package]
+edition = "2021"
+name = "libpulse-simple-binding"
+version = "2.27.1"
+authors = ["Lyndon Brown <jnqnfe@gmail.com>"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+description = "A Rust language binding for the PulseAudio libpulse-simple library."
+keywords = ["binding", "pulseaudio", "audio"]
+homepage = "https://github.com/jnqnfe/pulse-binding-rust"
+repository = "https://github.com/jnqnfe/pulse-binding-rust"
+exclude = ["README.md"]
+rust-version = "1.56"
+
+[dependencies]
+libpulse-binding    = { path = "../pulse-binding",    version = "2.27", default-features = false }
+libpulse-sys        = { path = "../pulse-sys",        version = "1.20", default-features = false }
+libpulse-simple-sys = { path = "../pulse-sys-simple", version = "1.20", default-features = false }
+
+[features]
+default = ["pa_v8"]
+
+# PA version compatibility selection
+# See the overall project `COMPATIBILITY.md` file for explanation.
+pa_v15 = ["pa_v14", "libpulse-binding/pa_v15", "libpulse-sys/pa_v15", "libpulse-simple-sys/pa_v15"]
+pa_v14 = ["pa_v13", "libpulse-binding/pa_v14", "libpulse-sys/pa_v14", "libpulse-simple-sys/pa_v14"]
+pa_v13 = ["pa_v12", "libpulse-binding/pa_v13", "libpulse-sys/pa_v13", "libpulse-simple-sys/pa_v13"]
+pa_v12 = ["pa_v8",  "libpulse-binding/pa_v12", "libpulse-sys/pa_v12", "libpulse-simple-sys/pa_v12"]
+pa_v8  = ["pa_v6",  "libpulse-binding/pa_v8",  "libpulse-sys/pa_v8",  "libpulse-simple-sys/pa_v8"]
+pa_v6  = ["pa_v5",  "libpulse-binding/pa_v6",  "libpulse-sys/pa_v6",  "libpulse-simple-sys/pa_v6"]
+pa_v5  = [          "libpulse-binding/pa_v5",  "libpulse-sys/pa_v5",  "libpulse-simple-sys/pa_v5"]
+
+[package.metadata.docs.rs]
+all-features = false
+no-default-features = true
+rustc-args = ["--cfg", "doc"]
+rustdoc-args = ["--cfg", "docsrs"]

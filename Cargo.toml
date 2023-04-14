@@ -1,0 +1,19 @@
+[package]
+name = "lamper"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = {version = "0.11", features = ["json"]}
+tokio = {version = "1", features = ["full"]}
+serde_json = {version = "1"}
+libpulse-binding = "2"
+libpulse-simple-binding = "2"
+colored = "2"
+dft = "0.5"
+arr_macro = "0.2.1"
+
+[patch.crates-io]
+libpulse-simple-binding = {path = "patch/libpulse-simple-binding-2.27.1"}
