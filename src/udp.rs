@@ -1,9 +1,60 @@
-use std::net::{Ipv4Addr, UdpSocket, SocketAddrV4};
-use serde_json::{Result, Value};
-use arr_macro::arr;
+// todo:
+// finish error propegation
+// finish cmd fn
+// make the cmd fn ideal for spamming large amounts of color commands
 
-pub fn init() -> Result<String> {
+use std::{net::{Ipv4Addr, UdpSocket, SocketAddrV4, AddrParseError}, str::FromStr};
+use serde_json::{Value};
+// use arr_macro::arr;
+
+// cmd types
+pub enum Cmd {
+    OnOff(Turn),
+    Brightness(u8),
+    DevStatus,
+    Color([u8; 3])
+}
+
+// cmd success types
+pub enum CmdSuccess {
+    Success,
+    Status(Turn, Cmd, Cmd)
+}
+
+// on, or maybe off
+pub enum Turn {
+    On,
+    Off
+}
+
+// cmd error types
+pub enum CmdErr {
+
+}
+
+// init error types
+pub enum InitErr {
+    AddrParseErr,
+    MulticastTtlErr
+}
+
+impl From<AddrParseError> for InitErr {
+    fn from(err: AddrParseError) -> Self {
+        InitErr::AddrParseErr
+    }
+}
+
+impl From<std::io::Error> for InitErr {
+    fn from(err: std::io::Error) -> Self {
+        InitErr::MulticastTtlErr
+    }
+}
+
+// creates udp socket, joins the multicast group, queries device
+// returns the socket and the ip of the first device to respond
+pub fn init() -> Result<(UdpSocket, SocketAddrV4), InitErr> {
     let socket = UdpSocket::bind("0.0.0.0:4002").expect("failed to bind");
+    socket.set_multicast_ttl_v4(1)?;
 
     let multicast_addr = Ipv4Addr::from([239, 255, 255, 250]);
     let port = 4001;
@@ -20,10 +71,22 @@ pub fn init() -> Result<String> {
     let json = trimmer(&buf);
 
     let ip = json["msg"]["data"]["ip"].to_string();
+    let socketaddr = SocketAddrV4::new(Ipv4Addr::from_str(&ip)?, 4003);
 
-    return Ok(ip)
+    return Ok((socket, socketaddr))
 }
 
+// WIP perform all possible commands over udp
+pub fn cmd(cmd: Cmd, socket: UdpSocket) -> Result<CmdSuccess, CmdErr> {
+    match cmd {
+        Cmd::OnOff(val) => {todo!()},
+        Cmd::Brightness(val) => {todo!()},
+        Cmd::Color(val) => {todo!()},
+        Cmd::DevStatus => {todo!()}
+    }
+}
+
+// trims whitespace from response buffer
 fn trimmer(buf: &[u8]) -> Value {
     let mut end = buf.len() - 1;
     let mut trav: u8 = buf[end];

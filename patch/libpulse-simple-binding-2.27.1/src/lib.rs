@@ -1,3 +1,6 @@
+// THIS PATCH ALLOWS FOR READING/WRITING FROM/TO AUDIO STREAMS IN F32 FORMAT
+
+
 // Copyright 2017 Lyndon Brown
 //
 // This file is part of the PulseAudio Rust language binding.

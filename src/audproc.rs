@@ -5,6 +5,7 @@ use libpulse_simple_binding::{self, Simple};
 use crate::WINDOW;
 
 pub fn start(tx: Sender<Vec<f32>>) {
+    // interface specs
     let spec = Spec {
         format: Format::FLOAT32NE,
         channels: 1,
@@ -12,6 +13,7 @@ pub fn start(tx: Sender<Vec<f32>>) {
     };
     assert!(spec.is_valid());
 
+    // create libpulse-simple interface
     let s = Simple::new(
         None,
         "lamper",
@@ -23,7 +25,8 @@ pub fn start(tx: Sender<Vec<f32>>) {
         None
     ).expect("error connecting to server");
     
-
+    // send data to colproc thread
+    // todo: some sort of while loop
     loop {
         let mut data = Vec::with_capacity(WINDOW);
         for _ in 0..WINDOW {
