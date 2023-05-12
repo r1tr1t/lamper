@@ -1,7 +1,7 @@
 extern crate lamper;
 
 use std::{io, thread, sync::mpsc};
-use lamper::{audproc, colproc};
+use lamper::{audproc, colproc, udp};
 use reqwest;
 use serde_json::{json};
 
@@ -24,16 +24,19 @@ fn clear() {
 }
 
 fn main() {
-    let (aptx, aprx) = mpsc::channel();
+    let (socket, socketaddr) = udp::init().expect("fuck if I know");
+    println!("{}", socketaddr);
+
+    // let (aptx, aprx) = mpsc::channel();
     // let (cptx, cprx) = mpsc::channel();
 
-    let ap = thread::spawn( move ||{
-        audproc::start(aptx);
-    });
+    // let ap = thread::spawn( move ||{
+    //     audproc::start(aptx);
+    // });
 
-    let cp = thread::spawn(move ||{
-        colproc::process(aprx);
-    });
+    // let cp = thread::spawn(move ||{
+    //     colproc::process(aprx);
+    // });
 
     // ap.join().unwrap();
     // cp.join().unwrap();

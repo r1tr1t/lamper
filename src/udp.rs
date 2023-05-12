@@ -33,20 +33,21 @@ pub enum CmdErr {
 }
 
 // init error types
+#[derive(Debug)]
 pub enum InitErr {
     AddrParseErr,
-    MulticastTtlErr
+    MiscInitErr
 }
 
 impl From<AddrParseError> for InitErr {
-    fn from(err: AddrParseError) -> Self {
+    fn from(_: AddrParseError) -> Self {
         InitErr::AddrParseErr
     }
 }
 
 impl From<std::io::Error> for InitErr {
-    fn from(err: std::io::Error) -> Self {
-        InitErr::MulticastTtlErr
+    fn from(_: std::io::Error) -> Self {
+        InitErr::MiscInitErr
     }
 }
 
@@ -60,18 +61,20 @@ pub fn init() -> Result<(UdpSocket, SocketAddrV4), InitErr> {
     let port = 4001;
     let multicast_socket = SocketAddrV4::new(multicast_addr, port);
 
-    let msg = r#"{"msg": {"cmd" : "scan", "data" : {"account_topic" : "reserve"}}}"#;
-    let bytes = msg.as_bytes();
+    let msg = r#"{"msg": {"cmd" : "scan", "data" : {"account_topic" : "reserve"}}}"#.as_bytes();
 
-    socket.send_to(bytes, multicast_socket).expect("failed to send to multicast socket");
+    socket.send_to(msg, multicast_socket).expect("failed to send to multicast socket");
 
     let mut buf = [0u8; 256];
-    socket.recv_from(&mut buf).unwrap();
+    socket.recv_from(&mut buf)?;
 
     let json = trimmer(&buf);
 
-    let ip = json["msg"]["data"]["ip"].to_string();
-    let socketaddr = SocketAddrV4::new(Ipv4Addr::from_str(&ip)?, 4003);
+    let ip = match json["msg"]["data"]["ip"].as_str() {
+        Some(ip) => ip,
+        None => return Err(InitErr::AddrParseErr)
+    };
+    let socketaddr = SocketAddrV4::new(Ipv4Addr::from_str(ip)?, 4003);
 
     return Ok((socket, socketaddr))
 }
