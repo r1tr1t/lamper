@@ -1,10 +1,13 @@
+// todo:
+// write functions to convert frequency to rgb and volume to brightness
+
 use std::sync::mpsc::{Sender, Receiver};
 use dft::{Operation, Plan};
 
 use crate::WINDOW;
 
 
-pub fn process(rx: Receiver<Vec<f32>>) {
+pub fn process(rx: Receiver<Vec<f32>>, tx: Sender<(u8, [u8; 3])>) {
     loop{
         let mut rgb: [u8; 3] = [0; 3];
         let data = rx.recv().expect("failed to recieve from audproc");
@@ -19,12 +22,19 @@ pub fn process(rx: Receiver<Vec<f32>>) {
                 top_freq_vol = *volume;
             }
         }
-        println!("top: {} Hz at volume {}", top_freq, top_freq_vol);
 
-        // rgb[0] = 
-        // tx.send(rgb).expect("failed to send from colproc");
+        
     }
 }
+
+fn rgb() {
+
+}
+
+fn brightness() {
+
+}
+
 fn dft(data: Vec<f32>) -> Vec<f32> {
     let plan = Plan::new(Operation::Forward, WINDOW);
 

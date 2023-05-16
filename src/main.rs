@@ -25,23 +25,31 @@ fn clear() {
 }
 
 fn main() {
-    let lamp = udp::init().expect("fuck if I know");
-    println!("{:?}", lamp);
+    let init = udp::init();
+    let conn;
+    println!("{:?}", init);
+    let lamp = match init {
+        Ok(lamp) => {conn = true; lamp},
+        Err(_) => panic!("Failed to initialize")
+    };
+    
+    let (aptx, aprx) = mpsc::channel();
+    let (cptx, cprx) = mpsc::channel();
 
-    let result = lamp.send_cmd(Cmd::Brightness(15)).unwrap();
-    println!("{:?}", result);
+    let ap = thread::spawn( move ||{
+        audproc::start(aptx);
+    });
 
-    // let (aptx, aprx) = mpsc::channel();
-    // let (cptx, cprx) = mpsc::channel();
+    let cp = thread::spawn(move ||{
+        colproc::process(aprx, cptx);
+    });
 
-    // let ap = thread::spawn( move ||{
-    //     audproc::start(aptx);
-    // });
+    while conn {
+        let (brightness, rgb) = cprx.recv().expect("failed to receive from cp");
+        lamp.send_cmd(Cmd::Brightness(brightness)).expect("failed to send packet to lamp");
+        lamp.send_cmd(Cmd::Color(rgb)).expect("failed to send packet to lamp");
+    }
 
-    // let cp = thread::spawn(move ||{
-    //     colproc::process(aprx);
-    // });
-
-    // ap.join().unwrap();
-    // cp.join().unwrap();
+    ap.join().unwrap();
+    cp.join().unwrap();
 }

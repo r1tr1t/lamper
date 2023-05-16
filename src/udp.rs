@@ -1,6 +1,3 @@
-// todo:
-// remove the devstatus command and staus brance of CmdSuccess enum to eliminate the need for a response
-
 use std::{net::{Ipv4Addr, UdpSocket, SocketAddrV4, AddrParseError}, str::FromStr, num::ParseIntError};
 use serde_json::{Value, json};
 // use arr_macro::arr;
@@ -10,7 +7,6 @@ use serde_json::{Value, json};
 pub enum Cmd {
     OnOff(Turn),
     Brightness(u8),
-    DevStatus,
     Color([u8; 3])
 }
 
@@ -105,25 +101,21 @@ impl Lamp {
                     Turn::On => {1},
                     Turn::Off => {0},
                 };
-                (command, Some(CmdValue::Single(value)))
+                (command, CmdValue::Single(value))
             },
             Cmd::Brightness(val) => {
                 if val > 100 {return Err(CmdErr::InvalidBrightnessErr)}
                 let command = "brightness";
-                (command, Some(CmdValue::Single(val)))
+                (command, CmdValue::Single(val))
             },
             Cmd::Color(val) => {
                 let command = "colorwc";
-                (command, Some(CmdValue::RGB(val)))
-            },
-            Cmd::DevStatus => {
-                let command = "devStatus";
-                (command, None)
+                (command, CmdValue::RGB(val))
             }
         };
 
         let msg = match value {
-            Some(CmdValue::Single(val)) => {serde_json::to_vec(&json!({
+            CmdValue::Single(val) => {serde_json::to_vec(&json!({
                 "msg": {
                     "cmd": command,
                     "data": {
@@ -131,7 +123,7 @@ impl Lamp {
                     }
                 }
             }))?},
-            Some(CmdValue::RGB(val)) => {serde_json::to_vec(&json!({
+            CmdValue::RGB(val) => {serde_json::to_vec(&json!({
                 "msg": {
                     "cmd": command,
                     "data": {
@@ -142,52 +134,13 @@ impl Lamp {
                         }
                     }
                 }
-            }))?},
-            None => {serde_json::to_vec(&json!({
-                "msg": {
-                    "cmd": command,
-                    "data": {
-                        
-                    }
-                }
-            }))?},
+            }))?}
         };
         
 
         self.socket.send_to(&msg, self.addr)?;
 
-        let mut buf = [0u8; 256];
-        self.socket.recv_from(&mut buf)?;
-
-        let rx = match buf.len() {
-            0 => CmdSuccess::Success,
-            _ => {
-                let json = trimmer(&buf);
-                let power = match json["msg"]["data"]["onOff"].as_str() {
-                    Some("0") => Turn::Off,
-                    Some("1") => Turn::On,
-                    Some(_) => Turn::Off,
-                    None => Turn::Off
-                };
-                let brightness = match json["msg"]["data"]["brightness"].as_str() {
-                    Some(val) => Cmd::Brightness(val.parse::<u8>()?),
-                    None => Cmd::Brightness(0)
-                };
-                let color = match &json["msg"]["data"]["color"] {
-                    rgb => {
-                        let r = rgb["r"].as_u64().unwrap() as u8;
-                        let g = rgb["g"].as_u64().unwrap() as u8;
-                        let b = rgb["b"].as_u64().unwrap() as u8;
-                        Cmd::Color([r, g, b])
-                    },
-                    _ => Cmd::Color([0, 0, 0])
-                };
-                
-                CmdSuccess::Status(power, brightness, color)
-            }
-        };
-
-        Ok(rx)
+        Ok(CmdSuccess::Success)
     }
 }
 
