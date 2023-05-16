@@ -4,6 +4,7 @@ use std::{io, thread, sync::mpsc};
 use lamper::{audproc, colproc, udp};
 use reqwest;
 use serde_json::{json};
+use udp::{Cmd, Turn};
 
 
 fn read_line() -> String {
@@ -24,8 +25,11 @@ fn clear() {
 }
 
 fn main() {
-    let (socket, socketaddr) = udp::init().expect("fuck if I know");
-    println!("{}", socketaddr);
+    let lamp = udp::init().expect("fuck if I know");
+    println!("{:?}", lamp);
+
+    let result = lamp.send_cmd(Cmd::Brightness(15)).unwrap();
+    println!("{:?}", result);
 
     // let (aptx, aprx) = mpsc::channel();
     // let (cptx, cprx) = mpsc::channel();

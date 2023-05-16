@@ -1,13 +1,12 @@
 // todo:
-// finish error propegation
-// finish cmd fn
-// make the cmd fn ideal for spamming large amounts of color commands
+// remove the devstatus command and staus brance of CmdSuccess enum to eliminate the need for a response
 
-use std::{net::{Ipv4Addr, UdpSocket, SocketAddrV4, AddrParseError}, str::FromStr};
-use serde_json::{Value};
+use std::{net::{Ipv4Addr, UdpSocket, SocketAddrV4, AddrParseError}, str::FromStr, num::ParseIntError};
+use serde_json::{Value, json};
 // use arr_macro::arr;
 
 // cmd types
+#[derive(Debug)]
 pub enum Cmd {
     OnOff(Turn),
     Brightness(u8),
@@ -16,27 +15,52 @@ pub enum Cmd {
 }
 
 // cmd success types
+#[derive(Debug)]
 pub enum CmdSuccess {
     Success,
     Status(Turn, Cmd, Cmd)
 }
 
 // on, or maybe off
+#[derive(Debug)]
 pub enum Turn {
     On,
     Off
 }
 
 // cmd error types
+#[derive(Debug)]
 pub enum CmdErr {
+    ParseIntErr,
+    SerdeErr,
+    InvalidBrightnessErr,
+    MiscCmdErr
+}
 
+impl From<std::io::Error> for CmdErr {
+    fn from(_: std::io::Error) -> Self {
+        CmdErr::MiscCmdErr
+    }
+}
+
+impl From<ParseIntError> for CmdErr {
+    fn from(_: ParseIntError) -> Self {
+        CmdErr::ParseIntErr
+    }
+}
+
+impl From<serde_json::Error> for CmdErr {
+    fn from(_: serde_json::Error) -> Self {
+        CmdErr::SerdeErr
+    }
 }
 
 // init error types
 #[derive(Debug)]
 pub enum InitErr {
     AddrParseErr,
-    MiscInitErr
+    MiscInitErr,
+    SerdeErr
 }
 
 impl From<AddrParseError> for InitErr {
@@ -51,9 +75,125 @@ impl From<std::io::Error> for InitErr {
     }
 }
 
+impl From<serde_json::Error> for InitErr {
+    fn from(_: serde_json::Error) -> Self {
+        InitErr::SerdeErr
+    }
+}
+
+#[derive(Debug)]
+pub struct Lamp {
+    socket: UdpSocket, 
+    addr: SocketAddrV4
+}
+
+pub enum CmdValue{
+    Single(u8),
+    RGB([u8; 3])
+}
+
+impl Lamp {
+    fn new(socket: UdpSocket, addr: SocketAddrV4) -> Self {
+        Lamp {socket, addr}
+    }
+
+    pub fn send_cmd(&self, cmd: Cmd) -> Result<CmdSuccess, CmdErr> {
+        let (command, value) = match cmd {
+            Cmd::OnOff(val) => {
+                let command = "turn";
+                let value = match val {
+                    Turn::On => {1},
+                    Turn::Off => {0},
+                };
+                (command, Some(CmdValue::Single(value)))
+            },
+            Cmd::Brightness(val) => {
+                if val > 100 {return Err(CmdErr::InvalidBrightnessErr)}
+                let command = "brightness";
+                (command, Some(CmdValue::Single(val)))
+            },
+            Cmd::Color(val) => {
+                let command = "colorwc";
+                (command, Some(CmdValue::RGB(val)))
+            },
+            Cmd::DevStatus => {
+                let command = "devStatus";
+                (command, None)
+            }
+        };
+
+        let msg = match value {
+            Some(CmdValue::Single(val)) => {serde_json::to_vec(&json!({
+                "msg": {
+                    "cmd": command,
+                    "data": {
+                        "value": val
+                    }
+                }
+            }))?},
+            Some(CmdValue::RGB(val)) => {serde_json::to_vec(&json!({
+                "msg": {
+                    "cmd": command,
+                    "data": {
+                        "color": {
+                            "r": val[0],
+                            "g": val[1],
+                            "b": val[2]
+                        }
+                    }
+                }
+            }))?},
+            None => {serde_json::to_vec(&json!({
+                "msg": {
+                    "cmd": command,
+                    "data": {
+                        
+                    }
+                }
+            }))?},
+        };
+        
+
+        self.socket.send_to(&msg, self.addr)?;
+
+        let mut buf = [0u8; 256];
+        self.socket.recv_from(&mut buf)?;
+
+        let rx = match buf.len() {
+            0 => CmdSuccess::Success,
+            _ => {
+                let json = trimmer(&buf);
+                let power = match json["msg"]["data"]["onOff"].as_str() {
+                    Some("0") => Turn::Off,
+                    Some("1") => Turn::On,
+                    Some(_) => Turn::Off,
+                    None => Turn::Off
+                };
+                let brightness = match json["msg"]["data"]["brightness"].as_str() {
+                    Some(val) => Cmd::Brightness(val.parse::<u8>()?),
+                    None => Cmd::Brightness(0)
+                };
+                let color = match &json["msg"]["data"]["color"] {
+                    rgb => {
+                        let r = rgb["r"].as_u64().unwrap() as u8;
+                        let g = rgb["g"].as_u64().unwrap() as u8;
+                        let b = rgb["b"].as_u64().unwrap() as u8;
+                        Cmd::Color([r, g, b])
+                    },
+                    _ => Cmd::Color([0, 0, 0])
+                };
+                
+                CmdSuccess::Status(power, brightness, color)
+            }
+        };
+
+        Ok(rx)
+    }
+}
+
 // creates udp socket, joins the multicast group, queries device
 // returns the socket and the ip of the first device to respond
-pub fn init() -> Result<(UdpSocket, SocketAddrV4), InitErr> {
+pub fn init() -> Result<Lamp, InitErr> {
     let socket = UdpSocket::bind("0.0.0.0:4002").expect("failed to bind");
     socket.set_multicast_ttl_v4(1)?;
 
@@ -61,9 +201,17 @@ pub fn init() -> Result<(UdpSocket, SocketAddrV4), InitErr> {
     let port = 4001;
     let multicast_socket = SocketAddrV4::new(multicast_addr, port);
 
-    let msg = r#"{"msg": {"cmd" : "scan", "data" : {"account_topic" : "reserve"}}}"#.as_bytes();
+    let msg = serde_json::to_vec(&json!({
+        "msg": {
+            "cmd": "scan",
+            "data": {
+                "account_topic": "reserve"
+            }
+        }
+    }))?;
 
-    socket.send_to(msg, multicast_socket).expect("failed to send to multicast socket");
+
+    socket.send_to(&msg, multicast_socket).expect("failed to send to multicast socket");
 
     let mut buf = [0u8; 256];
     socket.recv_from(&mut buf)?;
@@ -74,19 +222,9 @@ pub fn init() -> Result<(UdpSocket, SocketAddrV4), InitErr> {
         Some(ip) => ip,
         None => return Err(InitErr::AddrParseErr)
     };
-    let socketaddr = SocketAddrV4::new(Ipv4Addr::from_str(ip)?, 4003);
+    let addr = SocketAddrV4::new(Ipv4Addr::from_str(ip)?, 4003);
 
-    return Ok((socket, socketaddr))
-}
-
-// WIP perform all possible commands over udp
-pub fn cmd(cmd: Cmd, socket: UdpSocket) -> Result<CmdSuccess, CmdErr> {
-    match cmd {
-        Cmd::OnOff(val) => {todo!()},
-        Cmd::Brightness(val) => {todo!()},
-        Cmd::Color(val) => {todo!()},
-        Cmd::DevStatus => {todo!()}
-    }
+    Ok(Lamp::new(socket, addr))
 }
 
 // trims whitespace from response buffer
