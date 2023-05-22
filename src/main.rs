@@ -1,3 +1,6 @@
+// todo:
+// error handling to mutate conn in audproc::start and colproc::process
+
 extern crate lamper;
 
 use std::{io, thread, sync::mpsc};
@@ -26,7 +29,7 @@ fn clear() {
 
 fn main() {
     let init = udp::init();
-    let conn;
+    let mut conn;
     println!("{:?}", init);
     let lamp = match init {
         Ok(lamp) => {conn = true; lamp},
@@ -37,11 +40,11 @@ fn main() {
     let (cptx, cprx) = mpsc::channel();
 
     let ap = thread::spawn( move ||{
-        audproc::start(aptx);
+        audproc::start(aptx, &conn);
     });
 
     let cp = thread::spawn(move ||{
-        colproc::process(aprx, cptx);
+        colproc::process(aprx, cptx, &conn);
     });
 
     while conn {

@@ -4,7 +4,7 @@ use libpulse_simple_binding::{self, Simple};
 
 use crate::WINDOW;
 
-pub fn start(tx: Sender<Vec<f32>>) {
+pub fn start(tx: Sender<Vec<f32>>, conn: &bool) {
     // interface specs
     let spec = Spec {
         format: Format::FLOAT32NE,
@@ -27,7 +27,7 @@ pub fn start(tx: Sender<Vec<f32>>) {
     
     // send data to colproc thread
     // todo: some sort of while loop
-    loop {
+    while *conn {
         let mut data = Vec::with_capacity(WINDOW);
         for _ in 0..WINDOW {
             data.push(0.0)

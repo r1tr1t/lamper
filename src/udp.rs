@@ -77,6 +77,7 @@ impl From<serde_json::Error> for InitErr {
     }
 }
 
+// socket object and address
 #[derive(Debug)]
 pub struct Lamp {
     socket: UdpSocket, 
@@ -93,6 +94,7 @@ impl Lamp {
         Lamp {socket, addr}
     }
 
+    // send command to lamp over udp
     pub fn send_cmd(&self, cmd: Cmd) -> Result<CmdSuccess, CmdErr> {
         let (command, value) = match cmd {
             Cmd::OnOff(val) => {
@@ -145,7 +147,7 @@ impl Lamp {
 }
 
 // creates udp socket, joins the multicast group, queries device
-// returns the socket and the ip of the first device to respond
+// returns Lamp struct with socket and ip of first device to respond
 pub fn init() -> Result<Lamp, InitErr> {
     let socket = UdpSocket::bind("0.0.0.0:4002").expect("failed to bind");
     socket.set_multicast_ttl_v4(1)?;
@@ -180,7 +182,7 @@ pub fn init() -> Result<Lamp, InitErr> {
     Ok(Lamp::new(socket, addr))
 }
 
-// trims whitespace from response buffer
+// trims whitespace from response buffer, could be more efficient but don't feel like fixing it
 fn trimmer(buf: &[u8]) -> Value {
     let mut end = buf.len() - 1;
     let mut trav: u8 = buf[end];
