@@ -1,3 +1,6 @@
+// todo:
+// default device/selection
+
 use std::sync::mpsc::Sender;
 use libpulse_binding::{self, sample::{Spec, Format}, stream::Direction};
 use libpulse_simple_binding::{self, Simple};

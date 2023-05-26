@@ -1,12 +1,14 @@
 // todo:
 // error handling to mutate conn in audproc::start and colproc::process
+// ui:
+// maximum brightness
+// intensity modes?
+// revert to original settings on ending
 
 extern crate lamper;
 
 use std::{io, thread, sync::mpsc};
 use lamper::{audproc, colproc, udp};
-use reqwest;
-use serde_json::{json};
 use udp::{Cmd, Turn};
 
 
@@ -35,6 +37,7 @@ fn main() {
         Ok(lamp) => {conn = true; lamp},
         Err(_) => panic!("Failed to initialize")
     };
+    let initstate = lamp.dev_status().expect("failed to get lamp status");
     
     let (aptx, aprx) = mpsc::channel();
     let (cptx, cprx) = mpsc::channel();
@@ -55,4 +58,5 @@ fn main() {
 
     ap.join().unwrap();
     cp.join().unwrap();
+    std::process::exit(0);
 }

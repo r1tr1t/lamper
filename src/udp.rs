@@ -1,3 +1,7 @@
+// TODO:
+// call devstatus fn in init fn and make initstate field in Lamp struct
+
+
 use std::{net::{Ipv4Addr, UdpSocket, SocketAddrV4, AddrParseError}, str::FromStr, num::ParseIntError};
 use serde_json::{Value, json};
 // use arr_macro::arr;
@@ -30,7 +34,8 @@ pub enum CmdErr {
     ParseIntErr,
     SerdeErr,
     InvalidBrightnessErr,
-    MiscCmdErr
+    MiscCmdErr,
+    RecvErr
 }
 
 impl From<std::io::Error> for CmdErr {
@@ -143,6 +148,56 @@ impl Lamp {
         self.socket.send_to(&msg, self.addr)?;
 
         Ok(CmdSuccess::Success)
+    }
+
+    // get lamp status
+    pub fn dev_status(&self) -> Result<CmdSuccess, CmdErr> {
+        let msg = serde_json::to_vec(&json!({
+            "msg": {
+                "cmd": "devStatus",
+                "data": {
+
+                }
+            }
+        }))?;
+
+        self.socket.send_to(&msg, self.addr)?;
+
+        let mut recv_buf = [0u8; 256];
+        self.socket.recv_from(&mut recv_buf).or(Err(CmdErr::RecvErr))?;
+
+        let recv = trimmer(&recv_buf);
+
+        // json! macro can't be used in match statements??
+        let power = if recv["msg"]["data"]["onOff"] == json!(1) {
+            Turn::On
+        } else if recv["msg"]["data"]["offOff"] == json!(0) {
+            Turn::Off
+        } else {
+            return Err(CmdErr::RecvErr)
+        };
+
+        let brightness = match &recv["msg"]["data"]["brightness"] {
+            Value::Number(num) => Cmd::Brightness(num.as_u64().unwrap_or(0) as u8),
+            _ => return Err(CmdErr::RecvErr)
+        };
+
+        let r = match &recv["msg"]["data"]["color"]["r"] {
+            Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
+            _ => return Err(CmdErr::RecvErr)
+        };
+        let g = match &recv["msg"]["data"]["color"]["g"] {
+            Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
+            _ => return Err(CmdErr::RecvErr)
+        };
+        let b = match &recv["msg"]["data"]["color"]["b"] {
+            Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
+            _ => return Err(CmdErr::RecvErr)
+        };
+
+        let color = Cmd::Color([r, g, b]);
+
+        Ok(CmdSuccess::Status(power, brightness, color))
     }
 }
 

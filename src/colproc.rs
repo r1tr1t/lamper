@@ -1,4 +1,7 @@
-// todo: fix normalization
+// todo: 
+// fix normalization
+// two modes, one with hz -> color and another with hz -> brightness
+
 
 use std::{sync::mpsc::{Sender, Receiver}, collections::VecDeque};
 use dft::{Operation, Plan};
@@ -58,19 +61,20 @@ fn rgb(hz: f32) -> [u8; 3] {
     let hsl_to_rgb = |h: f32, s: f32, l: f32| {
         let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
         let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+        let m = l - c / 2.0;
 
         if h < 60.0 {
-            [c, x, 0.0]
+            [c + m, x + m, m]
         } else if h < 120.0 {
-            [x, c, 0.0]
+            [x + m, c + m, m]
         } else if h < 180.0 {
-            [0.0, c, x]
+            [m, c + m, x + m]
         } else if h < 240.0 {
-            [0.0, x, c]
+            [m, x + m, c + m]
         } else if h < 300.0 {
-            [x, 0.0, c]
+            [x + m, m, c + m]
         } else {
-            [c, 0.0, x]
+            [c + m, m, x + m]
         }
     };
 
