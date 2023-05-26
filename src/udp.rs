@@ -17,8 +17,7 @@ pub enum Cmd {
 // cmd success types
 #[derive(Debug)]
 pub enum CmdSuccess {
-    Success,
-    Status(Turn, Cmd, Cmd)
+    Success
 }
 
 // on, or maybe off
@@ -61,7 +60,8 @@ impl From<serde_json::Error> for CmdErr {
 pub enum InitErr {
     AddrParseErr,
     MiscInitErr,
-    SerdeErr
+    SerdeErr,
+    DevStatusErr
 }
 
 impl From<AddrParseError> for InitErr {
@@ -82,11 +82,26 @@ impl From<serde_json::Error> for InitErr {
     }
 }
 
+impl From<CmdErr> for InitErr {
+    fn from(_: CmdErr) -> Self {
+        InitErr::DevStatusErr
+    }
+}
+
 // socket object and address
 #[derive(Debug)]
 pub struct Lamp {
     socket: UdpSocket, 
-    addr: SocketAddrV4
+    addr: SocketAddrV4,
+    init: State
+}
+
+#[derive(Debug)]
+pub struct State {
+    pwr: Turn,
+    bright: u8,
+    color: [u8; 3],
+    temp: u16
 }
 
 pub enum CmdValue{
@@ -95,8 +110,8 @@ pub enum CmdValue{
 }
 
 impl Lamp {
-    fn new(socket: UdpSocket, addr: SocketAddrV4) -> Self {
-        Lamp {socket, addr}
+    fn new(socket: UdpSocket, addr: SocketAddrV4, init: State) -> Self {
+        Lamp {socket, addr, init}
     }
 
     // send command to lamp over udp
@@ -150,55 +165,45 @@ impl Lamp {
         Ok(CmdSuccess::Success)
     }
 
-    // get lamp status
-    pub fn dev_status(&self) -> Result<CmdSuccess, CmdErr> {
+    pub fn restore(&self) -> Result<CmdSuccess, CmdErr> {
+        let pwr = match self.init.pwr {
+            Turn::Off => 0,
+            Turn::On => 1
+        };
+        let bright = self.init.bright;
+        let color = self.init.color;
+        let temp = self.init.temp;
+
         let msg = serde_json::to_vec(&json!({
             "msg": {
-                "cmd": "devStatus",
+                "cmd": "turn",
                 "data": {
-
+                    "value": pwr
+                }
+            },
+            "msg": {
+                "cmd": "brightness",
+                "data": {
+                    "value": bright
+                }
+            },
+            "msg": {
+                "cmd": "colorwc",
+                "data": {
+                    "color": {
+                        "r": color[0],
+                        "g": color[1],
+                        "b": color[2]
+                    },
+                    "colorTemInKelvin": temp
                 }
             }
         }))?;
 
         self.socket.send_to(&msg, self.addr)?;
-
-        let mut recv_buf = [0u8; 256];
-        self.socket.recv_from(&mut recv_buf).or(Err(CmdErr::RecvErr))?;
-
-        let recv = trimmer(&recv_buf);
-
-        // json! macro can't be used in match statements??
-        let power = if recv["msg"]["data"]["onOff"] == json!(1) {
-            Turn::On
-        } else if recv["msg"]["data"]["offOff"] == json!(0) {
-            Turn::Off
-        } else {
-            return Err(CmdErr::RecvErr)
-        };
-
-        let brightness = match &recv["msg"]["data"]["brightness"] {
-            Value::Number(num) => Cmd::Brightness(num.as_u64().unwrap_or(0) as u8),
-            _ => return Err(CmdErr::RecvErr)
-        };
-
-        let r = match &recv["msg"]["data"]["color"]["r"] {
-            Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
-            _ => return Err(CmdErr::RecvErr)
-        };
-        let g = match &recv["msg"]["data"]["color"]["g"] {
-            Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
-            _ => return Err(CmdErr::RecvErr)
-        };
-        let b = match &recv["msg"]["data"]["color"]["b"] {
-            Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
-            _ => return Err(CmdErr::RecvErr)
-        };
-
-        let color = Cmd::Color([r, g, b]);
-
-        Ok(CmdSuccess::Status(power, brightness, color))
+        Ok(CmdSuccess::Success)
     }
+
 }
 
 // creates udp socket, joins the multicast group, queries device
@@ -233,8 +238,64 @@ pub fn init() -> Result<Lamp, InitErr> {
         None => return Err(InitErr::AddrParseErr)
     };
     let addr = SocketAddrV4::new(Ipv4Addr::from_str(ip)?, 4003);
+    let init = dev_status(&socket, &addr)?;
 
-    Ok(Lamp::new(socket, addr))
+    Ok(Lamp::new(socket, addr, init))
+}
+
+// get lamp status
+pub fn dev_status(socket: &UdpSocket, addr: &SocketAddrV4) -> Result<State, CmdErr> {
+    let msg = serde_json::to_vec(&json!({
+        "msg": {
+            "cmd": "devStatus",
+            "data": {
+
+            }
+        }
+    }))?;
+
+    socket.send_to(&msg, addr)?;
+
+    let mut recv_buf = [0u8; 256];
+    socket.recv_from(&mut recv_buf).or(Err(CmdErr::RecvErr))?;
+
+    let recv = trimmer(&recv_buf);
+
+    // json! macro can't be used in match statements??
+    let pwr = if recv["msg"]["data"]["onOff"] == json!(1) {
+        Turn::On
+    } else if recv["msg"]["data"]["offOff"] == json!(0) {
+        Turn::Off
+    } else {
+        return Err(CmdErr::RecvErr)
+    };
+
+    let bright = match &recv["msg"]["data"]["brightness"] {
+        Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
+        _ => return Err(CmdErr::RecvErr)
+    };
+
+    let r = match &recv["msg"]["data"]["color"]["r"] {
+        Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
+        _ => return Err(CmdErr::RecvErr)
+    };
+    let g = match &recv["msg"]["data"]["color"]["g"] {
+        Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
+        _ => return Err(CmdErr::RecvErr)
+    };
+    let b = match &recv["msg"]["data"]["color"]["b"] {
+        Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
+        _ => return Err(CmdErr::RecvErr)
+    };
+
+    let color = [r, g, b];
+
+    let temp = match &recv["msg"]["data"]["colorTemInKelvin"] {
+        Value::Number(num) => num.as_u64().unwrap_or(0) as u16,
+        _ => return Err(CmdErr::RecvErr)
+    };
+
+    Ok(State { pwr, bright, color, temp })
 }
 
 // trims whitespace from response buffer, could be more efficient but don't feel like fixing it

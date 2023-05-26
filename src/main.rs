@@ -7,7 +7,7 @@
 
 extern crate lamper;
 
-use std::{io, thread, sync::mpsc};
+use std::{io, thread, sync::mpsc, time::Duration};
 use lamper::{audproc, colproc, udp};
 use udp::{Cmd, Turn};
 
@@ -32,12 +32,11 @@ fn clear() {
 fn main() {
     let init = udp::init();
     let mut conn;
-    println!("{:?}", init);
     let lamp = match init {
         Ok(lamp) => {conn = true; lamp},
         Err(_) => panic!("Failed to initialize")
     };
-    let initstate = lamp.dev_status().expect("failed to get lamp status");
+    println!("{:?}", lamp);
     
     let (aptx, aprx) = mpsc::channel();
     let (cptx, cprx) = mpsc::channel();
