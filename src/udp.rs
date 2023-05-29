@@ -1,5 +1,4 @@
 // TODO:
-// call devstatus fn in init fn and make initstate field in Lamp struct
 
 
 use std::{net::{Ipv4Addr, UdpSocket, SocketAddrV4, AddrParseError}, str::FromStr, num::ParseIntError};
