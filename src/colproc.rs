@@ -1,17 +1,18 @@
-// todo: 
+// todo:
 // fix normalization
 // two modes, one with hz -> color and another with hz -> brightness
 
-
-use std::{sync::mpsc::{Sender, Receiver}, collections::VecDeque};
 use dft::{Operation, Plan};
+use std::{
+    collections::VecDeque,
+    sync::mpsc::{Receiver, Sender},
+};
 
 use crate::WINDOW;
 
 // frequency range
 const MAX_FREQUENCY: f32 = 20000.0;
 const MIN_FREQUENCY: f32 = 20.0;
-
 
 // main fn to process audio into brightness and rgb
 pub fn process(rx: Receiver<Vec<f32>>, tx: Sender<(u8, [u8; 3])>, conn: &bool) {
@@ -28,27 +29,31 @@ pub fn process(rx: Receiver<Vec<f32>>, tx: Sender<(u8, [u8; 3])>, conn: &bool) {
         let average: f32 = norm_buf.iter().sum::<f32>() / norm_buf_size as f32;
         average * norm_damper
     };
-    while *conn{
+    while *conn {
         let data = rx.recv().expect("failed to recieve from audproc");
 
-        let freqs =dft(data);
+        let freqs = dft(data);
         let mut top_freq = 0.0;
         let mut top_freq_vol = 0.0;
 
         for (i, volume) in freqs.iter().enumerate() {
             if i > 0 && i < freqs.len() / 2 && volume >= &top_freq_vol {
-                top_freq = i as f32 * 44100 as f32 / freqs.len() as f32;
+                top_freq = i as f32 * 44100_f32 / freqs.len() as f32;
                 top_freq_vol = *volume;
             }
         }
-        
+
         let norm = normalize(&top_freq_vol);
         let brightness = brightness(top_freq_vol, norm);
 
         let rgb = rgb(top_freq);
 
-        tx.send((brightness, rgb)).expect("couldn't send from colproc");
-        println!("top freq: {}, top freq vol: {}, norm: {} brightness: {}", top_freq, top_freq_vol, norm, brightness);
+        tx.send((brightness, rgb))
+            .expect("couldn't send from colproc");
+        println!(
+            "top freq: {}, top freq vol: {}, norm: {} brightness: {}",
+            top_freq, top_freq_vol, norm, brightness
+        );
     }
 }
 
@@ -81,22 +86,20 @@ fn rgb(hz: f32) -> [u8; 3] {
     let rgb_f = hsl_to_rgb(hue, saturation, lightness);
     let mut rgb: [u8; 3] = [0u8; 3];
     let max = u8::MAX as f32;
-    let mut count = 0;
-    for i in rgb_f {
+
+    for (count, i) in rgb_f.iter().enumerate() {
         rgb[count] = (i * max) as u8;
-        count += 1;
     }
 
     rgb
-
 }
 
 // convert volume of each frame to 1-100 brightness range
 fn brightness(vol: f32, norm: f32) -> u8 {
     if vol >= norm {
-        return 100
+        100
     } else {
-        return (vol/norm) as u8 * 100
+        (vol / norm) as u8 * 100
     }
 }
 

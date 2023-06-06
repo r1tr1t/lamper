@@ -1,9 +1,12 @@
 // TODO:
 // call devstatus fn in init fn and make initstate field in Lamp struct
 
-
-use std::{net::{Ipv4Addr, UdpSocket, SocketAddrV4, AddrParseError}, str::FromStr, num::ParseIntError};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
+use std::{
+    net::{AddrParseError, Ipv4Addr, SocketAddrV4, UdpSocket},
+    num::ParseIntError,
+    str::FromStr,
+};
 // use arr_macro::arr;
 
 // cmd types
@@ -11,20 +14,20 @@ use serde_json::{Value, json};
 pub enum Cmd {
     OnOff(Turn),
     Brightness(u8),
-    Color([u8; 3])
+    Color([u8; 3]),
 }
 
 // cmd success types
 #[derive(Debug)]
 pub enum CmdSuccess {
-    Success
+    Success,
 }
 
 // on, or maybe off
 #[derive(Debug)]
 pub enum Turn {
     On,
-    Off
+    Off,
 }
 
 // cmd error types
@@ -34,7 +37,7 @@ pub enum CmdErr {
     SerdeErr,
     InvalidBrightnessErr,
     MiscCmdErr,
-    RecvErr
+    RecvErr,
 }
 
 impl From<std::io::Error> for CmdErr {
@@ -61,7 +64,7 @@ pub enum InitErr {
     AddrParseErr,
     MiscInitErr,
     SerdeErr,
-    DevStatusErr
+    DevStatusErr,
 }
 
 impl From<AddrParseError> for InitErr {
@@ -91,9 +94,9 @@ impl From<CmdErr> for InitErr {
 // socket object and address
 #[derive(Debug)]
 pub struct Lamp {
-    socket: UdpSocket, 
+    socket: UdpSocket,
     addr: SocketAddrV4,
-    init: State
+    init: State,
 }
 
 #[derive(Debug)]
@@ -101,17 +104,17 @@ pub struct State {
     pwr: Turn,
     bright: u8,
     color: [u8; 3],
-    temp: u16
+    temp: u16,
 }
 
-pub enum CmdValue{
+pub enum CmdValue {
     Single(u8),
-    RGB([u8; 3])
+    RGB([u8; 3]),
 }
 
 impl Lamp {
     fn new(socket: UdpSocket, addr: SocketAddrV4, init: State) -> Self {
-        Lamp {socket, addr, init}
+        Lamp { socket, addr, init }
     }
 
     // send command to lamp over udp
@@ -120,16 +123,18 @@ impl Lamp {
             Cmd::OnOff(val) => {
                 let command = "turn";
                 let value = match val {
-                    Turn::On => {1},
-                    Turn::Off => {0},
+                    Turn::On => 1,
+                    Turn::Off => 0,
                 };
                 (command, CmdValue::Single(value))
-            },
+            }
             Cmd::Brightness(val) => {
-                if val > 100 {return Err(CmdErr::InvalidBrightnessErr)}
+                if val > 100 {
+                    return Err(CmdErr::InvalidBrightnessErr);
+                }
                 let command = "brightness";
                 (command, CmdValue::Single(val))
-            },
+            }
             Cmd::Color(val) => {
                 let command = "colorwc";
                 (command, CmdValue::RGB(val))
@@ -137,15 +142,15 @@ impl Lamp {
         };
 
         let msg = match value {
-            CmdValue::Single(val) => {serde_json::to_vec(&json!({
+            CmdValue::Single(val) => serde_json::to_vec(&json!({
                 "msg": {
                     "cmd": command,
                     "data": {
                         "value": val
                     }
                 }
-            }))?},
-            CmdValue::RGB(val) => {serde_json::to_vec(&json!({
+            }))?,
+            CmdValue::RGB(val) => serde_json::to_vec(&json!({
                 "msg": {
                     "cmd": command,
                     "data": {
@@ -156,9 +161,8 @@ impl Lamp {
                         }
                     }
                 }
-            }))?}
+            }))?,
         };
-        
 
         self.socket.send_to(&msg, self.addr)?;
 
@@ -168,7 +172,7 @@ impl Lamp {
     pub fn restore(&self) -> Result<CmdSuccess, CmdErr> {
         let pwr = match self.init.pwr {
             Turn::Off => 0,
-            Turn::On => 1
+            Turn::On => 1,
         };
         let bright = self.init.bright;
         let color = self.init.color;
@@ -203,7 +207,6 @@ impl Lamp {
         self.socket.send_to(&msg, self.addr)?;
         Ok(CmdSuccess::Success)
     }
-
 }
 
 // creates udp socket, joins the multicast group, queries device
@@ -225,8 +228,9 @@ pub fn init() -> Result<Lamp, InitErr> {
         }
     }))?;
 
-
-    socket.send_to(&msg, multicast_socket).expect("failed to send to multicast socket");
+    socket
+        .send_to(&msg, multicast_socket)
+        .expect("failed to send to multicast socket");
 
     let mut buf = [0u8; 256];
     socket.recv_from(&mut buf)?;
@@ -235,7 +239,7 @@ pub fn init() -> Result<Lamp, InitErr> {
 
     let ip = match json["msg"]["data"]["ip"].as_str() {
         Some(ip) => ip,
-        None => return Err(InitErr::AddrParseErr)
+        None => return Err(InitErr::AddrParseErr),
     };
     let addr = SocketAddrV4::new(Ipv4Addr::from_str(ip)?, 4003);
     let init = dev_status(&socket, &addr)?;
@@ -267,35 +271,40 @@ pub fn dev_status(socket: &UdpSocket, addr: &SocketAddrV4) -> Result<State, CmdE
     } else if recv["msg"]["data"]["offOff"] == json!(0) {
         Turn::Off
     } else {
-        return Err(CmdErr::RecvErr)
+        return Err(CmdErr::RecvErr);
     };
 
     let bright = match &recv["msg"]["data"]["brightness"] {
         Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
-        _ => return Err(CmdErr::RecvErr)
+        _ => return Err(CmdErr::RecvErr),
     };
 
     let r = match &recv["msg"]["data"]["color"]["r"] {
         Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
-        _ => return Err(CmdErr::RecvErr)
+        _ => return Err(CmdErr::RecvErr),
     };
     let g = match &recv["msg"]["data"]["color"]["g"] {
         Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
-        _ => return Err(CmdErr::RecvErr)
+        _ => return Err(CmdErr::RecvErr),
     };
     let b = match &recv["msg"]["data"]["color"]["b"] {
         Value::Number(num) => num.as_u64().unwrap_or(0) as u8,
-        _ => return Err(CmdErr::RecvErr)
+        _ => return Err(CmdErr::RecvErr),
     };
 
     let color = [r, g, b];
 
     let temp = match &recv["msg"]["data"]["colorTemInKelvin"] {
         Value::Number(num) => num.as_u64().unwrap_or(0) as u16,
-        _ => return Err(CmdErr::RecvErr)
+        _ => return Err(CmdErr::RecvErr),
     };
 
-    Ok(State { pwr, bright, color, temp })
+    Ok(State {
+        pwr,
+        bright,
+        color,
+        temp,
+    })
 }
 
 // trims whitespace from response buffer, could be more efficient but don't feel like fixing it
@@ -306,12 +315,12 @@ fn trimmer(buf: &[u8]) -> Value {
         end -= 1;
         trav = buf[end];
     }
-    
+
     let length = end + 1;
     let mut trim: Vec<u8> = Vec::with_capacity(length);
 
-    for i in 0..length {
-        trim.push(buf[i]);
+    for i in buf.iter().take(length) {
+        trim.push(*i);
     }
 
     let json: Value = serde_json::from_slice(&trim).unwrap();

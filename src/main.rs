@@ -7,55 +7,59 @@
 
 extern crate lamper;
 
-use std::{io, thread, sync::mpsc, time::Duration};
 use lamper::{audproc, colproc, udp};
+use std::{
+    io::{self, Write},
+    num::ParseIntError,
+    sync::mpsc,
+    thread,
+    time::Duration,
+};
 use udp::{Cmd, Turn};
 
-
-fn read_line() -> String {
+fn read_line() -> io::Result<String> {
     let mut input = String::new();
-    io::stdin().read_line(&mut input).expect("Failed to read line");
-    input
+    io::stdin().read_line(&mut input)?;
+    Ok(input)
 }
 
-fn read_u32() -> u32 {
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).expect("Failed to read line");
-    let uin = input.trim().parse::<u32>().expect("Failed to parse input to u32");
-    uin
+fn max_brightness() -> u8 {
+    print!("Set maximum brightness(1-100) [100]: ");
+    flush();
+    loop {
+        match read_line() {
+            Ok(val) => {
+                if val == "\n" {
+                    return 100;
+                } else if let Ok(num) = val.trim().parse::<u8>() {
+                    if num <= 100 && num > 0 {
+                        return num;
+                    } else {
+                        print!("Please enter a value 1-100 or press enter for default [100]: ");
+                        flush();
+                    }
+                } else {
+                    print!("Please enter a value 1-100 or press enter for default [100]: ");
+                    flush();
+                }
+            }
+            Err(err) => {
+                println!("Failed to read line: {}", err);
+            }
+        }
+    }
 }
 
 fn clear() {
-    print!("\x1B[2J")
+    print!("\x1B[2J\x1B[H")
+}
+
+fn flush() {
+    let mut stdout = std::io::stdout();
+    stdout.flush().expect("failed to flush stdout");
 }
 
 fn main() {
-    let init = udp::init();
-    let mut conn;
-    let lamp = match init {
-        Ok(lamp) => {conn = true; lamp},
-        Err(_) => panic!("Failed to initialize")
-    };
-    println!("{:?}", lamp);
-    
-    let (aptx, aprx) = mpsc::channel();
-    let (cptx, cprx) = mpsc::channel();
-
-    let ap = thread::spawn( move ||{
-        audproc::start(aptx, &conn);
-    });
-
-    let cp = thread::spawn(move ||{
-        colproc::process(aprx, cptx, &conn);
-    });
-
-    while conn {
-        let (brightness, rgb) = cprx.recv().expect("failed to receive from cp");
-        lamp.send_cmd(Cmd::Brightness(brightness)).expect("failed to send packet to lamp");
-        lamp.send_cmd(Cmd::Color(rgb)).expect("failed to send packet to lamp");
-    }
-
-    ap.join().unwrap();
-    cp.join().unwrap();
-    std::process::exit(0);
+    clear();
+    let max_brightness = max_brightness();
 }
