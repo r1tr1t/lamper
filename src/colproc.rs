@@ -16,45 +16,27 @@ const MIN_FREQUENCY: f32 = 20.0;
 
 // main fn to process audio into brightness and rgb
 pub fn process(rx: Receiver<Vec<f32>>, tx: Sender<(u8, [u8; 3])>, conn: &bool) {
-    let norm_buf_size: usize = 1000;
-    let norm_damper: f32 = 0.9;
-    let mut norm_buf = VecDeque::with_capacity(norm_buf_size);
-    let mut normalize = |vol: &f32| {
-        if norm_buf.len() < norm_buf_size {
-            norm_buf.push_back(*vol);
-        } else {
-            norm_buf.pop_front();
-            norm_buf.push_back(*vol);
+    let data = rx.recv().expect("failed to recieve from audproc");
+
+    let freqs = dft(data);
+    let mut top_freq = 0.0;
+    let mut top_freq_vol = 0.0;
+
+    for (i, volume) in freqs.iter().enumerate() {
+        if i > 0 && i < freqs.len() / 2 && volume >= &top_freq_vol {
+            top_freq = i as f32 * 44100_f32 / freqs.len() as f32;
+            top_freq_vol = *volume;
         }
-        let average: f32 = norm_buf.iter().sum::<f32>() / norm_buf_size as f32;
-        average * norm_damper
-    };
-    while *conn {
-        let data = rx.recv().expect("failed to recieve from audproc");
-
-        let freqs = dft(data);
-        let mut top_freq = 0.0;
-        let mut top_freq_vol = 0.0;
-
-        for (i, volume) in freqs.iter().enumerate() {
-            if i > 0 && i < freqs.len() / 2 && volume >= &top_freq_vol {
-                top_freq = i as f32 * 44100_f32 / freqs.len() as f32;
-                top_freq_vol = *volume;
-            }
-        }
-
-        let norm = normalize(&top_freq_vol);
-        let brightness = brightness(top_freq_vol, norm);
-
-        let rgb = rgb(top_freq);
-
-        tx.send((brightness, rgb))
-            .expect("couldn't send from colproc");
-        println!(
-            "top freq: {}, top freq vol: {}, norm: {} brightness: {}",
-            top_freq, top_freq_vol, norm, brightness
-        );
     }
+    let brightness = todo!();
+    let rgb = rgb(top_freq);
+
+    tx.send((brightness, rgb))
+        .expect("couldn't send from colproc");
+    println!(
+        "top freq: {}, top freq vol: {}, brightness: {}",
+        top_freq, top_freq_vol, brightness
+    );
 }
 
 // converts the dominant frequency of each frame to hsl then rgb

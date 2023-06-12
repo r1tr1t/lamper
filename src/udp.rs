@@ -95,16 +95,17 @@ impl From<CmdErr> for InitErr {
 #[derive(Debug)]
 pub struct Lamp {
     socket: UdpSocket,
-    addr: SocketAddrV4,
-    init: State,
+    pub addr: SocketAddrV4,
+    pub init: State,
+    maxb: u8,
 }
 
 #[derive(Debug)]
 pub struct State {
-    pwr: Turn,
-    bright: u8,
-    color: [u8; 3],
-    temp: u16,
+    pub pwr: Turn,
+    pub bright: u8,
+    pub color: [u8; 3],
+    pub temp: u16,
 }
 
 pub enum CmdValue {
@@ -114,7 +115,12 @@ pub enum CmdValue {
 
 impl Lamp {
     fn new(socket: UdpSocket, addr: SocketAddrV4, init: State) -> Self {
-        Lamp { socket, addr, init }
+        Lamp {
+            socket,
+            addr,
+            init,
+            maxb: 0,
+        }
     }
 
     // send command to lamp over udp
