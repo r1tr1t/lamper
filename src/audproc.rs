@@ -8,29 +8,26 @@ use libpulse_binding::{
     stream::Direction,
 };
 use libpulse_simple_binding::{self, Simple};
-use std::sync::mpsc::{SendError, Sender};
+use std::sync::{
+    mpsc::{SendError, Sender},
+    Arc,
+};
 
-use crate::WINDOW;
+use crate::{LampErr, WINDOW};
 
-// represents various errors possible within audproc library
-pub enum APResult {
-    PAErr,
-    TXErr,
-}
-
-impl From<PAErr> for APResult {
+impl From<PAErr> for LampErr {
     fn from(_: PAErr) -> Self {
-        APResult::PAErr
+        LampErr::PAErr
     }
 }
 
-impl<T> From<SendError<T>> for APResult {
+impl<T> From<SendError<T>> for LampErr {
     fn from(_: SendError<T>) -> Self {
-        APResult::TXErr
+        LampErr::SendErr
     }
 }
 
-pub fn start(tx: Sender<Vec<f32>>) -> Result<(), APResult> {
+pub fn start(tx: Sender<Vec<f32>>, conn: Arc<bool>) -> Result<(), LampErr> {
     // interface specs
     let spec = Spec {
         format: Format::FLOAT32NE,
@@ -52,8 +49,10 @@ pub fn start(tx: Sender<Vec<f32>>) -> Result<(), APResult> {
     )?;
 
     // send data to colproc thread
-    // todo: some sort of while loop
     loop {
+        if !*conn {
+            return Ok(());
+        }
         let mut data = Vec::with_capacity(WINDOW);
         for _ in 0..WINDOW {
             data.push(0.0)

@@ -5,18 +5,31 @@
 use dft::{Operation, Plan};
 use std::{
     collections::VecDeque,
-    sync::mpsc::{Receiver, Sender},
+    sync::{
+        mpsc::{Receiver, RecvError, SendError, Sender},
+        Arc,
+    },
 };
 
-use crate::WINDOW;
+use crate::{LampErr, WINDOW};
 
 // frequency range
 const MAX_FREQUENCY: f32 = 20000.0;
 const MIN_FREQUENCY: f32 = 20.0;
 
+impl From<RecvError> for LampErr {
+    fn from(_: RecvError) -> Self {
+        LampErr::SendErr
+    }
+}
+
 // main fn to process audio into brightness and rgb
-pub fn process(rx: Receiver<Vec<f32>>, tx: Sender<(u8, [u8; 3])>, conn: &bool) {
-    let data = rx.recv().expect("failed to recieve from audproc");
+pub fn process(
+    rx: Receiver<Vec<f32>>,
+    tx: Sender<(u8, [u8; 3])>,
+    conn: Arc<bool>,
+) -> Result<(), LampErr> {
+    let data = rx.recv()?;
 
     let freqs = dft(data);
     let mut top_freq = 0.0;
@@ -31,8 +44,7 @@ pub fn process(rx: Receiver<Vec<f32>>, tx: Sender<(u8, [u8; 3])>, conn: &bool) {
     let brightness = todo!();
     let rgb = rgb(top_freq);
 
-    tx.send((brightness, rgb))
-        .expect("couldn't send from colproc");
+    tx.send((brightness, rgb))?;
     println!(
         "top freq: {}, top freq vol: {}, brightness: {}",
         top_freq, top_freq_vol, brightness

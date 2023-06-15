@@ -5,18 +5,16 @@
 // intensity modes?
 // revert to original settings on ending
 
-extern crate lamper;
-
 use lamper::{
     audproc, colproc,
     udp::{self, InitErr, Lamp},
-    {BOLDEND, BOLDSTART},
+    LampErr, {BOLDEND, BOLDSTART},
 };
 use std::{
     io::{self, Write},
     net::AddrParseError,
     num::ParseIntError,
-    sync::mpsc,
+    sync::{mpsc, Arc},
     thread,
     time::Duration,
 };
@@ -59,7 +57,7 @@ fn max_brightness() -> u8 {
     }
 }
 
-fn connect() -> Lamp {
+fn connect() -> (Lamp, bool) {
     let catch = |err: InitErr| -> bool {
         match err {
             InitErr::DevStatusErr => {
@@ -112,18 +110,55 @@ fn connect() -> Lamp {
             let b = &lamp.init.color[2];
             println!("{}Initial State:{}\nPower: {}\nBrightness: {}\nColor(RGB): {}, {}, {}\nColor(Kelvin): {}", BOLDSTART, BOLDEND, pwr, &lamp.init.bright, r, g, b, &lamp.init.temp);
         }
-        return res.unwrap();
+        return (res.unwrap(), true);
     }
 }
 
+fn run(conn: Arc<bool>, lamp: Lamp) {
+    // conn atomics
+    let apconn = Arc::clone(&conn);
+    let cpconn = Arc::clone(&conn);
+    // channels
+    let (aptx, aprx) = mpsc::channel();
+    let (cptx, cprx) = mpsc::channel();
+
+    // threads
+    let ap = thread::spawn(|| match audproc::start(aptx, apconn) {
+        Ok(_) => {}
+        Err(err) => err.catch(),
+    });
+
+    let cp = thread::spawn(|| match colproc::process(aprx, cptx, cpconn) {
+        Ok(_) => {}
+        Err(err) => err.catch(),
+    });
+
+    loop {
+        match cprx.recv() {
+            Ok(val) => {
+                let (brightness, rgb) = val;
+                lamp.send_cmd(Cmd::Brightness(brightness));
+                lamp.send_cmd(Cmd::Color(rgb));
+            }
+            Err(err) => LampErr::from(err).catch(),
+        }
+    }
+
+    ap.join().unwrap();
+    cp.join().unwrap();
+}
+
+// clear terminal
 fn clear() {
     print!("\x1B[2J\x1B[H")
 }
 
+// print line
 fn line() {
     println!("---------------------------------");
 }
 
+// flush output (this and the 2 prior should probably be macros when I get to it)
 fn flush() {
     let mut stdout = std::io::stdout();
     stdout.flush().expect("failed to flush stdout");
@@ -131,8 +166,10 @@ fn flush() {
 
 fn main() {
     clear();
-    connect();
+    let (lamp, mut conn) = connect();
+    let conn = Arc::new(conn);
     line();
     let max_brightness = max_brightness();
-    clear();
+    line();
+    run(conn, lamp);
 }

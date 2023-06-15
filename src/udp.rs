@@ -17,12 +17,6 @@ pub enum Cmd {
     Color([u8; 3]),
 }
 
-// cmd success types
-#[derive(Debug)]
-pub enum CmdSuccess {
-    Success,
-}
-
 // on, or maybe off
 #[derive(Debug)]
 pub enum Turn {
@@ -124,7 +118,7 @@ impl Lamp {
     }
 
     // send command to lamp over udp
-    pub fn send_cmd(&self, cmd: Cmd) -> Result<CmdSuccess, CmdErr> {
+    pub fn send_cmd(&self, cmd: Cmd) -> Result<(), CmdErr> {
         let (command, value) = match cmd {
             Cmd::OnOff(val) => {
                 let command = "turn";
@@ -172,10 +166,10 @@ impl Lamp {
 
         self.socket.send_to(&msg, self.addr)?;
 
-        Ok(CmdSuccess::Success)
+        Ok(())
     }
 
-    pub fn restore(&self) -> Result<CmdSuccess, CmdErr> {
+    pub fn restore(&self) -> Result<(), CmdErr> {
         let pwr = match self.init.pwr {
             Turn::Off => 0,
             Turn::On => 1,
@@ -211,7 +205,7 @@ impl Lamp {
         }))?;
 
         self.socket.send_to(&msg, self.addr)?;
-        Ok(CmdSuccess::Success)
+        Ok(())
     }
 }
 
