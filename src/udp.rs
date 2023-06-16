@@ -85,7 +85,7 @@ impl From<CmdErr> for InitErr {
     }
 }
 
-// socket object and address
+// socket, address, init state, max brightness
 #[derive(Debug)]
 pub struct Lamp {
     socket: UdpSocket,
@@ -207,6 +207,24 @@ impl Lamp {
         self.socket.send_to(&msg, self.addr)?;
         Ok(())
     }
+
+    // check if still connected
+    pub fn check(&self) -> Result<(), CmdErr> {
+        match dev_status(&self.socket, &self.addr) {
+            Ok(_) => Ok(()),
+            Err(err) => Err(err),
+        }
+    }
+
+    // set max brightness
+    pub fn set_maxb(&mut self, maxb: u8) {
+        self.maxb = maxb
+    }
+
+    // return max brightness
+    pub fn maxb(&self) -> u8 {
+        self.maxb
+    }
 }
 
 // creates udp socket, joins the multicast group, queries device
@@ -248,7 +266,7 @@ pub fn init() -> Result<Lamp, InitErr> {
 }
 
 // get lamp status
-pub fn dev_status(socket: &UdpSocket, addr: &SocketAddrV4) -> Result<State, CmdErr> {
+fn dev_status(socket: &UdpSocket, addr: &SocketAddrV4) -> Result<State, CmdErr> {
     let msg = serde_json::to_vec(&json!({
         "msg": {
             "cmd": "devStatus",

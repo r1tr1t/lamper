@@ -12,19 +12,11 @@ use lamper::{
 };
 use std::{
     io::{self, Write},
-    net::AddrParseError,
-    num::ParseIntError,
-    sync::{mpsc, Arc},
+    sync::{mpsc, Arc, RwLock},
     thread,
     time::Duration,
 };
 use udp::{Cmd, Turn};
-
-fn read_line() -> io::Result<String> {
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    Ok(input)
-}
 
 // set the max brightness level
 fn max_brightness() -> u8 {
@@ -114,7 +106,7 @@ fn connect() -> (Lamp, bool) {
     }
 }
 
-fn run(conn: Arc<bool>, lamp: Lamp) {
+fn run(conn: Arc<RwLock<bool>>, lamp: Lamp) {
     // conn atomics
     let apconn = Arc::clone(&conn);
     let cpconn = Arc::clone(&conn);
@@ -133,14 +125,56 @@ fn run(conn: Arc<bool>, lamp: Lamp) {
         Err(err) => err.catch(),
     });
 
+    let mut check: u8 = 0;
     loop {
         match cprx.recv() {
             Ok(val) => {
                 let (brightness, rgb) = val;
-                lamp.send_cmd(Cmd::Brightness(brightness));
-                lamp.send_cmd(Cmd::Color(rgb));
+                match lamp.send_cmd(Cmd::Brightness((brightness / 100) * lamp.maxb())) {
+                    Ok(_) => {}
+                    Err(err) => println!("Error sending brightness: {:?}", err),
+                }
+                match lamp.send_cmd(Cmd::Color(rgb)) {
+                    Ok(_) => {}
+                    Err(err) => println!("Error sending color: {:?}", err),
+                }
             }
             Err(err) => LampErr::from(err).catch(),
+        }
+
+        // check connection every 255 frames
+        if check < 255 {
+            check += 1;
+        } else {
+            loop {
+                match lamp.check() {
+                    Ok(_) => {
+                        check = 0;
+                        *conn.write().unwrap() = true;
+                        break;
+                    }
+                    Err(_) => {
+                        *conn.write().unwrap() = false;
+                        println!("No response from device, retry connection? [Y/n]");
+                        match read_line() {
+                            Ok(val) => {
+                                if val == "\n" || val == "y" || val == "Y" {
+                                    continue;
+                                } else if val == "n" || val == "N" {
+                                    break;
+                                }
+                            }
+                            Err(err) => {
+                                println!("Failed to read line: {}", err);
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+            if !*conn.read().unwrap() {
+                break;
+            }
         }
     }
 
@@ -164,12 +198,19 @@ fn flush() {
     stdout.flush().expect("failed to flush stdout");
 }
 
+// read a line from stdin
+fn read_line() -> io::Result<String> {
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    Ok(input)
+}
+
 fn main() {
     clear();
-    let (lamp, mut conn) = connect();
-    let conn = Arc::new(conn);
+    let (mut lamp, conn) = connect();
+    let conn = Arc::new(RwLock::new(conn));
     line();
-    let max_brightness = max_brightness();
+    lamp.set_maxb(max_brightness());
     line();
     run(conn, lamp);
 }

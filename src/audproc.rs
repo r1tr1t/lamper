@@ -10,7 +10,7 @@ use libpulse_binding::{
 use libpulse_simple_binding::{self, Simple};
 use std::sync::{
     mpsc::{SendError, Sender},
-    Arc,
+    Arc, RwLock,
 };
 
 use crate::{LampErr, WINDOW};
@@ -27,7 +27,7 @@ impl<T> From<SendError<T>> for LampErr {
     }
 }
 
-pub fn start(tx: Sender<Vec<f32>>, conn: Arc<bool>) -> Result<(), LampErr> {
+pub fn start(tx: Sender<Vec<f32>>, conn: Arc<RwLock<bool>>) -> Result<(), LampErr> {
     // interface specs
     let spec = Spec {
         format: Format::FLOAT32NE,
@@ -50,7 +50,7 @@ pub fn start(tx: Sender<Vec<f32>>, conn: Arc<bool>) -> Result<(), LampErr> {
 
     // send data to colproc thread
     loop {
-        if !*conn {
+        if !*conn.read().unwrap() {
             return Ok(());
         }
         let mut data = Vec::with_capacity(WINDOW);

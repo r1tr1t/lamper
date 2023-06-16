@@ -8,7 +8,7 @@ pub mod audproc;
 pub mod colproc;
 pub mod udp;
 
-// TODO: nested enums for errors from each module
+// misc errors for audproc and colproc
 pub enum LampErr {
     PAErr,
     SendErr,
