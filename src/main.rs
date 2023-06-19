@@ -1,10 +1,3 @@
-// todo:
-// error catch fn to make handle various errors and give the option to exit
-// ui:
-// maximum brightness
-// intensity modes?
-// revert to original settings on ending
-
 use lamper::{
     audproc, colproc,
     udp::{self, InitErr, Lamp},
@@ -28,7 +21,7 @@ fn max_brightness() -> u8 {
     loop {
         match read_line() {
             Ok(val) => {
-                if val == "\n" {
+                if val.is_empty() {
                     return 100;
                 } else if let Ok(num) = val.trim().parse::<u8>() {
                     if num <= 100 && num > 0 {
@@ -56,7 +49,7 @@ fn connect() -> (Lamp, bool) {
                 println!("Error retrieving device status, retry connection? [Y/n]");
                 match read_line() {
                     Ok(val) => {
-                        if val == "\n" || val == "y" || val == "Y" {
+                        if val.is_empty() || val == "y" || val == "Y" {
                             true
                         } else {
                             !(val == "n" || val == "N")
@@ -158,7 +151,7 @@ fn run(conn: Arc<RwLock<bool>>, lamp: Lamp) {
                         println!("No response from device, retry connection? [Y/n]");
                         match read_line() {
                             Ok(val) => {
-                                if val == "\n" || val == "y" || val == "Y" {
+                                if val.is_empty() || val == "y" || val == "Y" {
                                     continue;
                                 } else if val == "n" || val == "N" {
                                     break;
@@ -202,7 +195,14 @@ fn flush() {
 fn read_line() -> io::Result<String> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    Ok(input)
+    Ok(input.trim().to_string())
+}
+
+fn _exit(lamp: Lamp) {
+    std::thread::sleep(Duration::from_secs(2));
+    lamp.restore()
+        .expect("Could not restore lamp to initial settings");
+    std::process::exit(0);
 }
 
 fn main() {

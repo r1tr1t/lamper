@@ -3,12 +3,9 @@
 // two modes, one with hz -> color and another with hz -> brightness
 
 use dft::{Operation, Plan};
-use std::{
-    collections::VecDeque,
-    sync::{
-        mpsc::{Receiver, RecvError, SendError, Sender},
-        Arc, RwLock,
-    },
+use std::sync::{
+    mpsc::{Receiver, RecvError, Sender},
+    Arc, RwLock,
 };
 
 use crate::{LampErr, WINDOW};
@@ -41,11 +38,14 @@ impl BrightNorm {
             self.vec.push(vol);
         } else {
             self.max = *self.vec.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
+            self.vec = Vec::with_capacity(BRIGHTNORMCAPACITY);
         }
 
-        if vol 
-
-        0u8
+        if vol >= self.max {
+            100u8
+        } else {
+            (((vol / self.max) * 0.9) * 100.0) as u8
+        }
     }
 }
 
@@ -73,13 +73,13 @@ pub fn process(
             }
         }
 
-        let brightness = brightness();
+        let brightness = bright_norm.norm(top_freq_vol);
         let rgb = rgb(top_freq);
 
         tx.send((brightness, rgb))?;
         println!(
-            "top freq: {}, top freq vol: {}, brightness: {}",
-            top_freq, top_freq_vol, brightness
+            "top freq: {}, top freq vol: {}, max: {}, brightness: {}",
+            top_freq, top_freq_vol, bright_norm.max, brightness
         );
     }
 }
