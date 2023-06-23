@@ -3,6 +3,7 @@
 // two modes, one with hz -> color and another with hz -> brightness
 
 use dft::{Operation, Plan};
+use rand::{self, Rng};
 use std::sync::{
     mpsc::{Receiver, RecvError, Sender},
     Arc, RwLock,
@@ -13,7 +14,6 @@ use crate::{LampErr, WINDOW};
 // frequency range
 const MAX_FREQUENCY: f32 = 20000.0;
 const MIN_FREQUENCY: f32 = 20.0;
-const BRIGHTNORMCAPACITY: usize = 50;
 
 impl From<RecvError> for LampErr {
     fn from(_: RecvError) -> Self {
@@ -23,28 +23,40 @@ impl From<RecvError> for LampErr {
 
 // brightness normalization
 struct BrightNorm {
-    vec: Vec<f32>,
+    default: f32,
     max: f32,
+    reset: u8,
+    reset_end: u8,
 }
 impl BrightNorm {
     fn new() -> Self {
         BrightNorm {
-            vec: Vec::with_capacity(BRIGHTNORMCAPACITY),
+            default: 800.0,
             max: 0.0,
+            reset: 0,
+            reset_end: 50,
         }
     }
+    // add conditions for reset_end
     fn norm(&mut self, vol: f32) -> u8 {
-        if self.vec.len() < BRIGHTNORMCAPACITY {
-            self.vec.push(vol);
-        } else {
-            self.max = *self.vec.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
-            self.vec = Vec::with_capacity(BRIGHTNORMCAPACITY);
-        }
-
-        if vol >= self.max {
+        if self.max != 0.0 && self.reset >= self.reset_end && vol < self.default {
+            self.max = 0.0;
+            self.reset = 0;
+            ((vol / self.default) * 100.0) as u8
+        } else if self.max != 0.0 && (vol > self.max || vol > self.default) {
+            self.max = vol;
+            self.reset = 0;
+            100u8
+        } else if self.max != 0.0 {
+            self.reset += 1;
+            ((vol / self.max) * 100.0) as u8
+        } else if vol > self.default {
+            self.max = vol;
+            self.reset = 0;
             100u8
         } else {
-            (((vol / self.max) * 0.9) * 100.0) as u8
+            self.reset = 0;
+            ((vol / self.default) * 100.0) as u8
         }
     }
 }
@@ -82,6 +94,68 @@ pub fn process(
             top_freq, top_freq_vol, bright_norm.max, brightness
         );
     }
+}
+
+pub enum Cycle {
+    Brightness(u8),
+    Color([u8; 3]),
+}
+
+pub fn process_cycle(
+    rx: Receiver<Vec<f32>>,
+    tx: Sender<Cycle>,
+    conn: Arc<RwLock<bool>>,
+) -> Result<(), LampErr> {
+    let (mut color, mut color_index) = cycle_color(None);
+    let mut cycle_count: u8 = 0;
+    let cycle_end: u8 = 255;
+    let mut bright_norm = BrightNorm::new();
+    loop {
+        if !*conn.read().unwrap() {
+            return Ok(());
+        }
+        match cycle_count {
+            0 => {
+                rx.recv()?;
+                tx.send(Cycle::Color(color))?;
+                cycle_count += 1
+            }
+            v if v < cycle_end => {
+                let data = rx.recv()?;
+                let vol = data.iter().sum::<f32>() / data.len() as f32;
+                let brightness = bright_norm.norm(vol);
+                tx.send(Cycle::Brightness(brightness))?;
+            }
+            _ => {
+                rx.recv()?;
+                (color, color_index) = cycle_color(Some(color_index));
+                tx.send(Cycle::Color(color))?;
+            }
+        }
+    }
+}
+
+fn cycle_color(prev: Option<usize>) -> ([u8; 3], usize) {
+    let cycle: [[u8; 3]; 7] = [
+        [255, 0, 0],
+        [255, 0, 213],
+        [94, 0, 255],
+        [0, 26, 255],
+        [0, 213, 255],
+        [26, 255, 0],
+        [255, 111, 0],
+    ];
+    let index = match prev {
+        Some(val) => {
+            let mut rand = rand::thread_rng().gen_range(0..cycle.len());
+            while val == rand {
+                rand = rand::thread_rng().gen_range(0..cycle.len());
+            }
+            rand
+        }
+        None => rand::thread_rng().gen_range(0..cycle.len()),
+    };
+    (cycle[index], index)
 }
 
 // converts the dominant frequency of each frame to hsl then rgb

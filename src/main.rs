@@ -1,7 +1,7 @@
 use lamper::{
     audproc, colproc,
     udp::{self, InitErr, Lamp},
-    LampErr, {BOLDEND, BOLDSTART},
+    LampErr, {BOLDEND, BOLDSTART, CMDDELAY},
 };
 use std::{
     io::{self, Write},
@@ -65,6 +65,7 @@ fn connect() -> (Lamp, bool) {
         }
     };
 
+    // establish connection with device
     loop {
         println!(
             "{}Searching for Govee device on current network...{}",
@@ -95,7 +96,11 @@ fn connect() -> (Lamp, bool) {
             let b = &lamp.init.color[2];
             println!("{}Initial State:{}\nPower: {}\nBrightness: {}\nColor(RGB): {}, {}, {}\nColor(Kelvin): {}", BOLDSTART, BOLDEND, pwr, &lamp.init.bright, r, g, b, &lamp.init.temp);
         }
-        return (res.unwrap(), true);
+        let res = res.unwrap();
+        if let Err(err) = res.send_cmd(Cmd::OnOff(Turn::On)) {
+            println!("Failed to turn lamp on: {:?}", err);
+        }
+        return (res, true);
     }
 }
 
@@ -122,57 +127,58 @@ fn run(conn: Arc<RwLock<bool>>, lamp: Lamp) {
     loop {
         match cprx.recv() {
             Ok(val) => {
-                let (brightness, rgb) = val;
-                match lamp.send_cmd(Cmd::Brightness((brightness / 100) * lamp.maxb())) {
-                    Ok(_) => {}
-                    Err(err) => println!("Error sending brightness: {:?}", err),
-                }
-                match lamp.send_cmd(Cmd::Color(rgb)) {
-                    Ok(_) => {}
-                    Err(err) => println!("Error sending color: {:?}", err),
+                if check < 255 {
+                    let (brightness, rgb) = val;
+                    match lamp.send_cmd(Cmd::Brightness(brightness)) {
+                        Ok(_) => {}
+                        Err(err) => println!("Error sending brightness: {:?}", err),
+                    }
+                    thread::sleep(Duration::from_millis(CMDDELAY as u64));
+                    match lamp.send_cmd(Cmd::Color(rgb)) {
+                        Ok(_) => {}
+                        Err(err) => println!("Error sending color: {:?}", err),
+                    }
+                    check += 1;
+                } else {
+                    loop {
+                        match lamp.check() {
+                            Ok(_) => {
+                                check = 0;
+                                *conn.write().unwrap() = true;
+                                break;
+                            }
+                            Err(_) => {
+                                *conn.write().unwrap() = false;
+                                println!("No response from device, retry connection? [Y/n]");
+                                match read_line() {
+                                    Ok(val) => {
+                                        if val.is_empty() || val == "y" || val == "Y" {
+                                            continue;
+                                        } else if val == "n" || val == "N" {
+                                            break;
+                                        }
+                                    }
+                                    Err(err) => {
+                                        println!("Failed to read line: {}", err);
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        thread::sleep(Duration::from_millis(CMDDELAY as u64));
+                    }
+                    if !*conn.read().unwrap() {
+                        break;
+                    }
                 }
             }
             Err(err) => LampErr::from(err).catch(),
-        }
-
-        // check connection every 255 frames
-        if check < 255 {
-            check += 1;
-        } else {
-            loop {
-                match lamp.check() {
-                    Ok(_) => {
-                        check = 0;
-                        *conn.write().unwrap() = true;
-                        break;
-                    }
-                    Err(_) => {
-                        *conn.write().unwrap() = false;
-                        println!("No response from device, retry connection? [Y/n]");
-                        match read_line() {
-                            Ok(val) => {
-                                if val.is_empty() || val == "y" || val == "Y" {
-                                    continue;
-                                } else if val == "n" || val == "N" {
-                                    break;
-                                }
-                            }
-                            Err(err) => {
-                                println!("Failed to read line: {}", err);
-                                continue;
-                            }
-                        }
-                    }
-                }
-            }
-            if !*conn.read().unwrap() {
-                break;
-            }
         }
     }
 
     ap.join().unwrap();
     cp.join().unwrap();
+    exit(lamp);
 }
 
 // clear terminal
@@ -198,7 +204,7 @@ fn read_line() -> io::Result<String> {
     Ok(input.trim().to_string())
 }
 
-fn _exit(lamp: Lamp) {
+fn exit(lamp: Lamp) {
     std::thread::sleep(Duration::from_secs(2));
     lamp.restore()
         .expect("Could not restore lamp to initial settings");

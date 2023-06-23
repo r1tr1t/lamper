@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-const WINDOW: usize = 2048;
+const WINDOW: usize = 4096;
+pub const CMDDELAY: usize = 46;
 pub const BOLDSTART: &str = "\x1b[1m";
 pub const BOLDEND: &str = "\x1b[0m";
 

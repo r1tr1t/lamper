@@ -117,7 +117,7 @@ impl Lamp {
         }
     }
 
-    // send command to lamp over udp
+    // send any command to lamp over udp
     pub fn send_cmd(&self, cmd: Cmd) -> Result<(), CmdErr> {
         let (command, value) = match cmd {
             Cmd::OnOff(val) => {
