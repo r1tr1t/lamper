@@ -13,6 +13,7 @@ libpulse-binding = "2"
 libpulse-simple-binding = "2"
 dft = "0.5"
 arr_macro = "0.2.1"
+rand = "0.8.5"
 
 [patch.crates-io]
 libpulse-simple-binding = {path = "patch/libpulse-simple-binding-2.27.1"}

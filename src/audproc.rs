@@ -1,18 +1,38 @@
 // todo:
 // default device/selection
 
-use std::sync::mpsc::Sender;
-use libpulse_binding::{self, sample::{Spec, Format}, stream::Direction};
+use libpulse_binding::{
+    self,
+    error::PAErr,
+    sample::{Format, Spec},
+    stream::Direction,
+};
 use libpulse_simple_binding::{self, Simple};
+use std::sync::{
+    mpsc::{SendError, Sender},
+    Arc, RwLock,
+};
 
-use crate::WINDOW;
+use crate::{LampErr, WINDOW};
 
-pub fn start(tx: Sender<Vec<f32>>, conn: &bool) {
+impl From<PAErr> for LampErr {
+    fn from(_: PAErr) -> Self {
+        LampErr::PAErr
+    }
+}
+
+impl<T> From<SendError<T>> for LampErr {
+    fn from(_: SendError<T>) -> Self {
+        LampErr::SendErr
+    }
+}
+
+pub fn start(tx: Sender<Vec<f32>>, conn: Arc<RwLock<bool>>) -> Result<(), LampErr> {
     // interface specs
     let spec = Spec {
         format: Format::FLOAT32NE,
         channels: 1,
-        rate: 44100 
+        rate: 44100,
     };
     assert!(spec.is_valid());
 
@@ -26,17 +46,19 @@ pub fn start(tx: Sender<Vec<f32>>, conn: &bool) {
         &spec,
         None,
         None
-    ).expect("error connecting to server");
-    
+    )?;
+
     // send data to colproc thread
-    // todo: some sort of while loop
-    while *conn {
+    loop {
+        if !*conn.read().unwrap() {
+            return Ok(());
+        }
         let mut data = Vec::with_capacity(WINDOW);
         for _ in 0..WINDOW {
             data.push(0.0)
         }
 
-        s.read(&mut data).expect("error reading audio data");
-        tx.send(data).expect("couldn't send data from audproc");
+        s.read(&mut data)?;
+        tx.send(data)?;
     }
 }
